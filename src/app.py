@@ -8,8 +8,8 @@ should think of this script as a recipe:
 
 1.  Collect the user’s question from a simple web interface.
 2.  Look up related troubleshooting information in a vector database.
-3.  Send both the question and the related context to an LLM hosted on
-    HuggingFace for a final answer.
+3.  Send both the question and the related context to a locally hosted
+    LLM for a final answer.
 4.  Record feedback so the system can be improved later.
 
 Every major block below is annotated to explain *why* it exists and *how* it
@@ -35,7 +35,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 from sentence_transformers import SentenceTransformer
 from numpy import dot
 from numpy.linalg import norm
-from huggingface_hub import InferenceClient
+from llama_cpp import Llama
 
 from prompt_templates import SYSTEM_TEMPLATE, build_prompt
 from feedback_db import save as save_feedback          
@@ -69,7 +69,7 @@ with col2:
 
 
 # ── CONFIG ────────────────────────────────────────────────────────────────
-#MODEL_PATH = "models/llama-3-13b-Instruct-Q4_K_M.gguf"
+MODEL_PATH = Path("model/Llama-3-13B-Instruct-Q4_K_M.gguf")
 LORA_PATH  = "models/lora-adapter"
 VECTOR_DIR = "vectorstore"
 ERROR_RE   = re.compile(r"^\d+_\d+$")
@@ -77,29 +77,29 @@ MAX_TOKENS = 512
 MEM_TURNS  = 8
 
 # ── CACHES ─────────────────────────────────────────────────────────────────
-@st.cache_resource(show_spinner="Connecting to HF Inference API…")
-def load_llm() -> InferenceClient:
-    """Create a client that can talk to a hosted Llama model.
+@st.cache_resource(show_spinner="Loading local Llama model…")
+def load_llm() -> Llama:
+    """Load the quantized Llama model from disk.
 
-    The model itself lives on HuggingFace's servers.  We authenticate using a
-    token stored in Streamlit's secret configuration and then create an
-    ``InferenceClient`` which exposes a simple ``chat_completion`` method used
-    later in :func:`run_llm`.
+    The ``llama_cpp`` library runs the GGUF model completely locally.  We
+    configure a context window large enough for our prompts and return the
+    initialized :class:`~llama_cpp.Llama` instance.
     """
-    token    = st.secrets["hf"]["api_token"]
-    MODEL_ID = "meta-llama/Llama-4-Scout-17B-16E-Instruct"  # swap to 13B if you like
-    return InferenceClient(model=MODEL_ID, token=token)
-llm = load_llm()
-
+    if not MODEL_PATH.exists():
+        raise FileNotFoundError(
+            f"Model file not found at {MODEL_PATH}. Run 'python download_model.py' "
+            "to fetch it."
+        )
+    return Llama(model_path=str(MODEL_PATH), n_ctx=4096)
 def run_llm(prompt: str) -> str:
-    """Send a prompt to the LLM and return only the model's text reply.
+    """Send a prompt to the local LLM and return only its text reply.
 
     ``prompt`` is a long string constructed elsewhere that contains system
     instructions, any relevant context documents and the user's question.  This
     function hides the slightly verbose API call and extracts just the text of
     the assistant's answer.
     """
-    resp = llm.chat_completion(
+    resp = llm.create_chat_completion(
         messages=[
             {"role": "system", "content": "You are QuikPick Oracle."},
             {"role": "user",   "content": prompt},
@@ -107,10 +107,9 @@ def run_llm(prompt: str) -> str:
         max_tokens=MAX_TOKENS,
         temperature=0.2,
         top_p=0.95,
-        # you can also pass stop=["<END>"] if supported
     )
     # extract the assistant’s reply
-    return (resp.choices[0].message.content or "").strip()
+    return (resp["choices"][0]["message"]["content"] or "").strip()
 
 @st.cache_resource(show_spinner="Opening vector store…")
 def load_store():
@@ -181,7 +180,7 @@ def get_answer(prompt: str, *, max_retry: int = 1) -> tuple[str, str | None, str
             (
                 d for d in st.session_state.docs
                 if d["meta"].get("IsImage")
-                and Path(d["meta"]["filepath"]).name == fname   # ← **fix**
+                and Path(d["meta"]["filepath"]).name == fname
             ),
             None,
         )

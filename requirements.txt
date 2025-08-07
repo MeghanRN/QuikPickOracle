@@ -9,3 +9,4 @@ transformers>=4.45.0
 torch>=2.3.0
 safetensors
 accelerate>=0.20.3
+llama-cpp-python
