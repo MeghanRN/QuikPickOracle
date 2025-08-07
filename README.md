@@ -15,7 +15,7 @@ Follow the steps below to install, teach, and use the assistant.
 
 This project combines two ideas:
 
-1. **Large language models (LLMs)** – neural networks trained on vast text collections. They predict the next word in a sentence and can generate coherent paragraphs. The Oracle uses Meta's [Llama‑4 Scout 17B](https://huggingface.co/meta-llama/Llama-4-Scout-17B-16E-Instruct) hosted on Hugging Face. When you ask a question, the LLM turns the request into an answer, limited to about 512 tokens (roughly 400 words). A low *temperature* setting keeps responses focused and less random.
+1. **Large language models (LLMs)** – neural networks trained on vast text collections. They predict the next word in a sentence and can generate coherent paragraphs. The Oracle uses a quantized [Llama‑3 13B Instruct](https://huggingface.co/TheBloke/Llama-3-13B-Instruct-GGUF) model that runs entirely on your machine. When you ask a question, the LLM turns the request into an answer, limited to about 512 tokens (roughly 400 words). A low *temperature* setting keeps responses focused and less random.
 2. **Retrieval** – instead of relying solely on what the LLM already knows, the app searches your own documentation. Everything you ingest is converted into numeric "embeddings" and stored in a small database. Asking a question triggers a similarity search against this database so the LLM can reference the most relevant facts.
 
 LLMs work purely by pattern matching. They do not understand text the way humans do, nor can they browse the internet or remember past runs of the program. Instead, they process text in small chunks called **tokens** (roughly four characters each) and predict what comes next. Because the model has no built‑in memory of your CSV files, retrieval is how we supply it with the latest information.
@@ -39,14 +39,13 @@ If you're new to LLMs, remember that they are pattern‑matching engines rather 
    pip install -r requirements.txt
    ```
 
-3. The web app connects to a hosted language model on Hugging Face. Create the file `src/.streamlit/secrets.toml` and add your personal API token:
+3. Download the quantized Llama model so the app can run completely offline:
 
-   ```toml
-   [hf]
-   api_token = "YOUR_HUGGINGFACE_TOKEN"
+   ```bash
+   python download_model.py
    ```
 
-   Keep this file private; it should not be committed to version control.
+   This fetches a ~4 GB GGUF file from Hugging Face and stores it in the `model/` folder.
 
 ---
 
@@ -107,7 +106,7 @@ Your browser will open a page where you can type a question or error code. The O
 
 ## 6. Troubleshooting tips
 
-- **Missing Hugging Face token:** The app will fail to start if the token is not set in `src/.streamlit/secrets.toml`.
+- **Missing model file:** Run `python download_model.py` to fetch the GGUF model.
 - **Stale answers:** Delete the `vectorstore/` folder and ingest again to rebuild the knowledge base.
 - **No browser page:** Streamlit prints a local URL in the terminal. Copy the link into your browser if it does not open automatically.
 
